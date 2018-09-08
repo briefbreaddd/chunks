@@ -1,0 +1,96 @@
+setwd("/Users/Firestream/Google\ Drive/b_private_research_documentation/bus_2_residential_foncier_donna")
+
+setwd("C:\\Users\\Billy\\Google Drive\\b_private_research_documentation\\bus_2_residential_foncier_donna")
+
+library(tidyverse)
+
+
+
+# function to match civic number and street with regex
+find_uid <- function(c, s ){
+  uid_list <- df_registre %>%
+    filter(CIVIQUE_DEBUT == c | CIVIQUE_FIN == c) %>%
+    filter(str_detect(NOM_RUE2, regex(s, ignore_case = T)))
+  
+  return(uid_list$ID_UEV)
+}
+
+# function to find unique house
+find_house <- function(c,s) df_registre %>%
+  filter(CIVIQUE_DEBUT == c | CIVIQUE_FIN == c) %>%
+  filter(str_detect(NOM_RUE, regex(s, ignore_case = T)))
+
+
+# read files
+## remember to set column 22 and 33
+df_donna <- read_csv("data_download/34.csv")
+df_inhouse_address_update <- read_csv("data_reference/inhouse_address_update.csv")
+df_registre <- read_csv("data_reference/not_open_with_excel/uniteevaluationfonciere.csv")
+
+## Remove parenthesis and trim space
+##pattern1 <- "\(([^)]*)\)[^(]*$"
+pattern1 <- "\\s*\\([^\\)]+\\)"
+df_registre$NOM_RUE2 <- gsub(pattern1,"", df_registre$NOM_RUE)
+df_registre$NOM_RUE2 <- str_trim(df_registre$NOM_RUE2)
+
+## remove laval from the list
+df_donna_sample <- filter(df_donna, !grepl("(450)",`2`))
+df_donna_sample <- filter(df_donna_sample, grepl("", `5`))
+
+## match residential to registre foncier ID
+df_donna_sample$registre_foncier <- df_donna_sample$`5`
+for(id in 1:nrow(df_donna_sample)){
+  df_donna_sample$registre_foncier[df_donna_sample$registre_foncier %in% df_inhouse_address_update$by[id]] <- df_inhouse_address_update$notes[id]
+}
+df_donna_sample$clean_address <- df_donna_sample$registre_foncier
+## create column displaying updated or not
+df_donna_sample$inhouse_updated <- df_donna_sample$`5`
+for(id in 1:nrow(df_donna_sample)){
+  df_donna_sample$inhouse_updated[df_donna_sample$inhouse_updated %in% df_inhouse_address_update$by[id]] <- "updated"
+}
+
+# map adress to registre
+df_donna_sample$registre_foncier <- mapply(find_uid, df_donna_sample$`4`, df_donna_sample$clean_address)
+
+
+
+
+
+
+
+#### reformat donna file
+
+## 2 - make copy of found element
+df_donna_sample_found <- df_donna_sample[df_donna_sample$registre_foncier!="character(0)",]
+
+## convert list to vector, add more columns
+df_donna_sample_found$df_registre <- sapply(df_donna_sample_found$registre_foncier, function(x) x[1])
+df_donna_sample_found$registre_foncier <- sapply(df_donna_sample_found$registre_foncier, toString)
+
+# df_donna_sample4$df_registre <- replace_na(df_donna_sample4$df_registre,"")
+
+## convert list to vector, add more columns
+
+df_donna_sample_found$NOM_RUE <- sapply(df_donna_sample_found$df_registre, simplify = TRUE, function(x) if(!is.na(x)) {df_registre[ which(df_registre$ID_UEV == x), "NOM_RUE2"]})
+df_donna_sample_found$NOM_RUE <- sapply(df_donna_sample_found$NOM_RUE, toString)
+df_donna_sample_found$CATEGORIE_UEF <- sapply(df_donna_sample_found$df_registre, simplify = "vector" , function(x) if(!is.na(x)) {df_registre[df_registre$ID_UEV == x, "CATEGORIE_UEF"]})
+df_donna_sample_found$CATEGORIE_UEF <- sapply(df_donna_sample_found$CATEGORIE_UEF, toString)
+df_donna_sample_found$NOMBRE_LOGEMENT <- sapply(df_donna_sample_found$df_registre, simplify = "vector" , function(x) if(!is.na(x)) {df_registre[df_registre$ID_UEV == x, "NOMBRE_LOGEMENT"]})
+df_donna_sample_found$NOMBRE_LOGEMENT <- sapply(df_donna_sample_found$NOMBRE_LOGEMENT, toString)
+df_donna_sample_found$CODE_UTILISATION <- sapply(df_donna_sample_found$df_registre, simplify = "vector" , function(x) if(!is.na(x)) {df_registre[df_registre$ID_UEV == x, "CODE_UTILISATION"]})
+df_donna_sample_found$CODE_UTILISATION <- sapply(df_donna_sample_found$CODE_UTILISATION, toString)
+
+
+
+## 4 - laval + unfound + good housing + removed address not found and inhouse updated
+df_laval <- filter(df_donna, grepl("(450)",`2`))
+df_laval$CATEGORIE_UEF <- ""
+## df_unfound the one that are not found and not updated
+df_unfound <- df_donna_sample[(df_donna_sample$registre_foncier=="character(0)" & df_donna_sample$inhouse_updated != "updated"),c("X1","0","1","2","22","33","3","4","5","6","7","8","9")]
+df_unfound$CATEGORIE_UEF <- ""
+df_found_filter <- df_donna_sample_found %>%
+  filter((CATEGORIE_UEF == "Régulier" & NOMBRE_LOGEMENT == 1) | CATEGORIE_UEF == "Condominium") 
+df_found_filter <- df_found_filter[, c("X1","0","1","2","22","33","3","4","5","6","7","8","9", "CATEGORIE_UEF")]
+df_final <- rbind(df_found_filter, df_unfound, df_laval)
+df_final$CATEGORIE_UEF <- str_replace(df_final$CATEGORIE_UEF,'Condominium', 'c')
+write_csv(df_final, 'data_rmodified/341.csv', na = "")

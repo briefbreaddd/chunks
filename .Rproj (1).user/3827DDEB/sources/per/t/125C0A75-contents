@@ -1,0 +1,164 @@
+---
+title: "Vermont police stops"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**September 8th, 2018**
+
+# Sources
+Data are taken from: https://openpolicing.stanford.edu/
+
+On a typical day in the United States, police officers make more than 50,000 traffic stops. Their team is gathering, analyzing, and releasing records from millions of traffic stops by law enforcement agencies across the country. Their goal is to help researchers, journalists, and policymakers investigate and improve interactions between police and the public.
+
+# Introduction
+
+This analysis will be focusing on Vermont police stops in 2015 to determine which gender, nationality and county have the most arrested stops.
+
+# Data exploration and overview
+
+## Loading the libraries
+
+```{r Loading libraries, warning=F, message=F}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(lubridate)
+library(viridis)
+library(leaflet)
+library(scales)
+```
+
+## Loading the data 
+
+The data will be focusing on Vermont only.
+```{r load data, warning=F, message=F}
+options(tigris_class = "sf")
+stops <- read_csv("data_raw/VT-clean.csv")
+stops <- filter(stops, county_fips != 0)
+```
+
+```{r glimpse}
+glimpse(stops)
+```
+
+
+```{r data wrangling, message=FALSE, warning=FALSE, cache=TRUE}
+## wrangle data
+stops$county_fips <- as.character(stops$county_fips)
+stops$years <- year(stops$stop_date)
+stops$months <- month(stops$stop_date)
+vmt <- counties("Vermont", cb=T)
+vmt$county_fips <- paste(vmt$STATEFP, vmt$COUNTYFP, sep = "")
+
+stops_bycounty <- stops %>%
+  group_by(county_fips, years,is_arrested) %>%
+  summarise(total=n())
+
+## combine
+vmt_stops_arrested <- left_join(vmt, stops_bycounty, by="county_fips")
+vmt_stops_arrested <- vmt_stops_arrested %>%
+  filter(is_arrested == "TRUE")
+```
+
+## Yearly change by county
+
+Here we present the yearly changes by county. The top right of Vermont has no variation. The top left county is missing for some years. 
+
+```{r plot 2010 to 2015}
+ggplot(vmt_stops_arrested) + 
+  facet_wrap(~years) +
+  geom_sf(aes(fill=total)) +
+  scale_fill_viridis(direction=-1) +
+  scale_color_viridis(direction=-1) +
+  theme_void()+
+  theme(panel.grid.major = element_line(colour = 'transparent')) +
+  labs(title = "Vermont total arrested police stops by counties from 2010 to 2015",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") 
+```
+
+# Police stops in 2015
+
+```{r plot 2015}
+## select 2015 only
+vmt_stops_arrested %>%
+  filter(years=="2015") %>%
+  ggplot(aes(fill=total))+
+  geom_sf() +
+  scale_fill_viridis(direction=-1) +
+  scale_color_viridis(direction=-1) +
+  theme_void()+
+  theme(panel.grid.major = element_line(colour = 'transparent')) +
+  labs(title = "Vermont total arrested police stops by counties in 2015",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") 
+```
+
+## Leaflet
+```{r add leaflet and stowe resort}
+## leaflet - total stops by Vermont counties in 2015
+vmt_stops_2015 <- vmt_stops_arrested %>%
+  filter(years=="2015")
+pal <- colorNumeric(c("Greens"), domain=vmt_stops_2015$total)
+popup_sb <- paste0("Total: ", as.character(vmt_stops_2015$total))
+
+
+leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-72.702921, 43.965932, zoom = 7) %>% 
+  addPolygons(data = vmt_stops_2015 , 
+              fillColor = ~pal(vmt_stops_2015$total), 
+              fillOpacity = 0.7, 
+              weight = 0.2, 
+              smoothFactor = 0.2, 
+              popup = ~popup_sb) %>%
+  addMarkers(lng=-72.779338, lat=44.529923, popup="<b>Stowe Mountain Resort</b>") %>%
+  addLegend(pal = pal, 
+            values = vmt_stops_2015$total, 
+            position = "bottomright", 
+            title = "Total arrested stops")
+
+```
+
+## Observation
+From the chart below, this analysis should be further investigate by finding the ratio of white population in Vermont. We shouldn't draw any conclusion yet.
+
+```{r facet wrap by multiple variables, warning=F, message=F, fig.width=13, fig.height=13}
+## Police stops by years, race and gender
+a <- stops %>% 
+  filter(is_arrested == "TRUE") %>%
+  filter(!is.na(driver_gender)) %>%
+  filter(!is.na(driver_race))
+  
+a$months <- month(a$months)
+
+a %>%
+  ggplot() +
+  geom_bar(mapping=aes(x=months, fill=driver_gender)) + 
+  expand_limits(x = 0, y = 0) +
+  facet_grid(years~driver_race) +
+  scale_x_continuous(breaks=seq(1,12,1), limits=c(1,12)) + 
+  scale_y_continuous(breaks=seq(0,90,10), limits=c(0,90)) + 
+  labs(title = "Vermont total arrested police stops by race from 2010 to 2015",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") +
+  theme(panel.border = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.y = element_line(colour = "gray85"),
+        axis.line.x = element_blank(),
+        plot.margin = unit(c(1,1,1,1), "cm")
+        )
+```
+
+# Thank you note
+
+It was a pleasure being part of this course. I was able to learn R throught a journalist lens and gain immediate knowledge for data exploration. 

@@ -1,0 +1,128 @@
+
+library(tidyverse)
+library(sf)
+library(tigris)
+library(lubridate)
+library(viridis)
+library(leaflet)
+library(scales)
+
+
+# week 4: do a choropleth map
+# special add: gganimate, facetwrap
+# data from: https://openpolicing.stanford.edu/
+
+## set shapefile
+options(tigris_class = "sf")
+
+
+## load data
+stops <- read_csv("data_raw/VT-clean.csv")
+stops <- filter(stops, county_fips != 0)
+
+
+## wrangle data
+stops$county_fips <- as.character(stops$county_fips)
+stops$years <- year(stops$stop_date)
+stops$months <- month(stops$stop_date)
+vmt <- counties("Vermont", cb=T)
+vmt$county_fips <- paste(vmt$STATEFP, vmt$COUNTYFP, sep = "")
+
+stops_bycounty <- stops %>%
+  group_by(county_fips, years,is_arrested) %>%
+  summarise(total=n())
+
+
+## combine
+vmt_stops_arrested <- left_join(vmt, stops_bycounty, by="county_fips")
+vmt_stops_arrested <- vmt_stops_arrested %>%
+  filter(is_arrested == "TRUE")
+
+## facet by years
+ggplot(vmt_stops_arrested) + 
+  facet_wrap(~years) +
+  geom_sf(aes(fill=total)) +
+  scale_fill_viridis(direction=-1) +
+  scale_color_viridis(direction=-1) +
+  theme_void()+
+  theme(panel.grid.major = element_line(colour = 'transparent')) +
+  labs(title = "Vermont total arrested police stops by counties from 2010 to 2015",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") 
+
+## select 2015 only
+vmt_stops_arrested %>%
+  filter(years=="2015") %>%
+  ggplot(aes(fill=total))+
+  geom_sf() +
+  scale_fill_viridis(direction=-1) +
+  scale_color_viridis(direction=-1) +
+  theme_void()+
+  theme(panel.grid.major = element_line(colour = 'transparent')) +
+  labs(title = "Vermont total arrested police stops by counties in 2010",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") 
+
+## display leaflet stowe mountain ski resort
+m <- leaflet() %>%
+  addTiles() %>%  
+  setView(lng=-72.779338, lat=44.529923, zoom = 16) %>%
+  addMarkers(lng=-72.779338, lat=44.529923, popup="<b>Hello</b><br><a href='https://www.washingtonpost.com'>-Me</a>")
+
+## leaflet - total stops by Vermont counties in 2015
+vmt %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addPolygons(popup=~NAME)
+
+## 
+vmt_stops_2015 <- vmt_stops_arrested %>%
+  filter(years=="2015")
+pal <- colorNumeric(c("Greens"), domain=vmt_stops_2015$total)
+popup_sb <- paste0("Total: ", as.character(vmt_stops_2015$total))
+
+
+leaflet() %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  setView(-72.702921, 43.965932, zoom = 7) %>% 
+  addPolygons(data = vmt_stops_2015 , 
+              fillColor = ~pal(vmt_stops_2015$total), 
+              fillOpacity = 0.7, 
+              weight = 0.2, 
+              smoothFactor = 0.2, 
+              popup = ~popup_sb) %>%
+  addMarkers(lng=-72.779338, lat=44.529923, popup="<b>Stowe Mountain Resort</b>") %>%
+  addLegend(pal = pal, 
+            values = vmt_stops_2015$total, 
+            position = "bottomright", 
+            title = "Total arrested stops")
+
+## facet wrap
+
+
+a <- stops %>% 
+  filter(is_arrested == "TRUE") %>%
+  filter(!is.na(driver_gender)) %>%
+  filter(!is.na(driver_race))
+  
+a$months <- month(a$months)
+
+a %>%
+  ggplot() +
+  geom_bar(mapping=aes(x=months, fill=driver_gender)) + 
+  expand_limits(x = 0, y = 0) +
+  facet_grid(years~driver_race) +
+  scale_x_continuous(breaks=seq(1,12,1), limits=c(1,12)) + 
+  scale_y_continuous(breaks=seq(0,90,10), limits=c(0,90)) + 
+  labs(title = "Vermont total arrested police stops by race from 2010 to 2015",
+       subtitle = "for R for Journalists class",
+       caption = "Data from https://openpolicing.stanford.edu/") +
+  theme(panel.border = element_blank(), 
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.major.y = element_line(colour = "gray85"),
+        axis.line.x = element_blank(),
+        plot.margin = unit(c(1,1,1,1), "cm")
+        )
+  

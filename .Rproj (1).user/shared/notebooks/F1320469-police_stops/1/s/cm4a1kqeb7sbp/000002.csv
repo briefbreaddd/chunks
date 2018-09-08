@@ -1,0 +1,20 @@
+"0","#load data"
+"0","options(tigris_class = ""sf"")"
+"0","stops <- read_csv(""data_raw/VT-clean.csv"")"
+"2","Parsed with column specification:
+cols(
+  .default = col_character(),
+  stop_date = col_date(format = """"),
+  stop_time = col_time(format = """"),
+  county_fips = col_integer(),
+  driver_age_raw = col_integer(),
+  driver_age = col_double(),
+  search_conducted = col_logical(),
+  contraband_found = col_logical(),
+  is_arrested = col_logical(),
+  officer_id = col_integer()
+)
+"
+"2","See spec(...) for full column specifications.
+"
+"0","stops <- filter(stops, county_fips != 0)"
