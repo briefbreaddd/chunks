@@ -1,0 +1,7 @@
+.Rhistory
+.DS_Store
+choropleth.R
+police_stops_cache/
+police_stops_files/
+VT-clean.csv.gz
+.Rproj (1).user
